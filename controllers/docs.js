@@ -33,8 +33,10 @@ docsRouter.post('/upload', upload.single('file'), async (req, res) => {
         // The true flag overwrites any existing files with the same names
         zip.extractAllTo(extractTargetDir, true);
 
+        // Process csv file and upload to db
         const processedWorkers = await processWorkers(path.join(extractTargetDir, 'profiles.csv'));
 
+        // Process fields from pdfs and upload to db
         const errors = await processDocs(Object.keys(processedWorkers), workerDir = path.join(extractTargetDir, 'documents'));
 
         res.status(200).send({

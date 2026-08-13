@@ -4,11 +4,6 @@ const { DOC_TYPES } = require('../const/const');
 const { convertToWorkerMap } = require('../helpers/docsHelper');
 const { validateWorkers } = require('../helpers/workersHelper');
 
-workersRouter.get('/', async (req, res) => {
-  const workers = await models.worker.findAll();
-  res.json(workers);
-});
-
 workersRouter.get('/validate', async (req, res) => {
   const workers = await models.worker.findAll({ raw: true });
   const docsRaw = {};
@@ -18,8 +13,10 @@ workersRouter.get('/validate', async (req, res) => {
 
   await Promise.allSettled(docsPromises);
 
+  // Convert to workerId => workerData map for easier processing
   const docs = convertToWorkerMap(docsRaw);
 
+  // Validate data
   const validationResults = await validateWorkers(workers, docs);
 
   res.status(200).json(validationResults);

@@ -4,6 +4,13 @@ const { PDFParse } = require('pdf-parse');
 const models = require('../models');
 const { DOC_TYPES, ERRORS } = require('../const/const');
 
+/* 
+ * Parse pdf fields into key:value pairs
+ *
+ * @param filePath - path to pdf file
+ * 
+ * @return Object containing data parsed from pdf
+ */
 const parsePdf = async (filePath) => {
     const dataBuffer = fs.readFileSync(filePath);
     const parser = new PDFParse({ data: dataBuffer });
@@ -19,6 +26,14 @@ const parsePdf = async (filePath) => {
     return data;
 };
 
+/*
+ * Parse data from docs and upload to db.
+ * 
+ * @param workerIds - list of worker ID's
+ * @param baseDir - base directory of pdf files
+ * 
+ * @return Object - list of document errors { missingDocs, unreadableDocs }
+ */
 const processDocs = async (workerIds, baseDir) => {
 	try {
         const data = Object.keys(DOC_TYPES).reduce((acc, docType) => {
@@ -35,15 +50,23 @@ const processDocs = async (workerIds, baseDir) => {
             const docPromises = Object.keys(DOC_TYPES).map(async (docType) => {
                 const filename = DOC_TYPES[docType].filename;
                 const filePath = path.join(workerDir, DOC_TYPES[docType].filename);
+
+                // pdf doesn't exist
                 if (!fs.existsSync(filePath)) {
                     errors.missingDocs.push({ workerId, filename });
                     return;
                 }
+
+                // Try to parse pdf
                 const pdfData = await parsePdf(filePath);
+
+                // pdf was unparsable
                 if (!pdfData || Object.keys(pdfData).length === 0) {
                     errors.unreadableDocs.push({ workerId , filename});
                     return;
                 }
+
+                // Convert parsed data into sequelize model usable for upload
                 const parsedData = Object.keys(DOC_TYPES[docType].fields).reduce((acc, field) => {
                     if (pdfData[DOC_TYPES[docType].fields[field]]) {
                         // Special case when there is no expiration date (eg. citizen card)
@@ -77,12 +100,14 @@ const processDocs = async (workerIds, baseDir) => {
 
         await Promise.allSettled(promises);
 
+        // Upload docs data to db
         const sqlPromises = Object.keys(DOC_TYPES).map(async (docType) => {
             return await models[DOC_TYPES[docType].model].bulkCreate(data[docType], { ignoreDuplicates: true });
         });
         
         await Promise.allSettled(sqlPromises);
 
+        // Upload missing docs and unreadable docs errors to db
         const missingDocs = errors.missingDocs.map(({ workerId, filename }) => ({
             worker_id: workerId,
             filename,
@@ -104,6 +129,13 @@ const processDocs = async (workerIds, baseDir) => {
 	}
 };
 
+/*
+ * Convert raw docs data to workerId=>docData format for easier processing
+ * 
+ * @param docsRaw - raw docs data
+ * 
+ * @return Object of { workerId: docData }
+ */
 const convertToWorkerMap = (docsRaw) => {
     const docs = Object.keys(DOC_TYPES).reduce((acc, docType) => {
         docsRaw[docType].forEach((doc) => {
