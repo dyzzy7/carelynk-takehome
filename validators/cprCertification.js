@@ -6,7 +6,7 @@ const validate = (worker, doc) => {
 
     const dateErrors = validateDocDates(doc.issued_date, doc.expiration_date, 'CPR_CERTIFICATION');
     if (dateErrors.length > 0) {
-        errors.push(dateErrors);
+        errors.push(...dateErrors);
     }
 
     const mismatchedData = [];

@@ -6,7 +6,7 @@ const validate = (worker, doc) => {
 
     const dateErrors = validateDocDates(doc.date, null, 'CRIMINAL_RECORD_CHECK');
     if (dateErrors.length > 0) {
-        errors.push(dateErrors);
+        errors.push(...dateErrors);
     }
 
     if (doc.result != CRIMINAL_RECORD_RESULTS.NONE){

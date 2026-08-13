@@ -81,36 +81,58 @@ const processWorkers = async (filePath) => {
 
 const validateWorkers = async (workers, docs) => {
 	const currentErrors = await models.error.findAll({ raw: true });
-	const result = {};
+	const validationResults = {};
+	const errorsData = [];
 	currentErrors.forEach(({ worker_id, filename, error, details }) => {
-		result[worker_id] = result[worker_id] || {};
-		result[worker_id][filename] = result[worker_id][filename] || { result: 'Invalid document.', errors: [] };
-		result[worker_id][filename].errors.push({ error, details: details ? details : undefined });
+		validationResults[worker_id] = validationResults[worker_id] || {};
+		validationResults[worker_id][filename] = validationResults[worker_id][filename] || { result: 'Invalid document.', errors: [] };
+		validationResults[worker_id][filename].errors.push({ error, details: details || undefined });
 	});
 
 	workers.forEach((worker) => {
 		const workerId = worker.worker_id;
-		const currentWorkerErrors = {};
-		const workerDocsData = docs[worker.workerd];
-		Object.keys(docs[workerId]).forEach((docType) => {
+		const workerDocsData = docs[workerId];
+
+		Object.keys(DOC_TYPES).forEach((docType) => {
+			const filename = DOC_TYPES[docType].filename;
+			validationResults[workerId] = validationResults[workerId] || {};
+			validationResults[workerId][filename] = validationResults[workerId][filename] || {};
+			if (validationResults[workerId][filename]?.errors) {
+				validationResults[workerId][filename].result = 'Errors found in validation.'
+				return;
+			};
+
 			const currentDocErrors = validators[docType].validate(worker, docs[workerId][docType]);
+			
 			if (currentDocErrors.length > 0) {
-				currentWorkerErrors[DOC_TYPES[docType].filename] = { result: 'Errors found in validation.', errors: currentDocErrors };
+				validationResults[workerId][filename] = { result: 'Errors found in validation.', errors: currentDocErrors };
+				currentDocErrors.forEach((error) => {
+					errorsData.push({
+						worker_id: workerId,
+						filename: filename,
+						error: error.error,
+						details: error.details
+					});
+				})
 			} else {
-				currentWorkerErrors[DOC_TYPES[docType].filename] = { result: 'Validation successful.' };
+				validationResults[workerId][filename] = { result: 'Validation successful.' };
 			}
 		})
 
 		if (worker.years_experience < 2) {
-			currentWorkerErrors.general_errors = { error: "Worker has less than 2 years of experience. "};
-		}
-
-		if (Object.keys(currentWorkerErrors).length > 0) {
-			result[workerId] = currentWorkerErrors;
+			const message = 'Worker has less than 2 years of experience.';
+			validationResults[workerId].general_errors = { error: message };
+			errorsData.push({
+				worker_id: workerId,
+				filename: 'general_errors',
+				error: message
+			});
 		}
 	});
 
-	return Object.fromEntries(Object.entries(result).sort());
+	await models.error.bulkCreate(errorsData, { ignoreDuplicates: true });
+
+	return Object.fromEntries(Object.entries(validationResults).sort());
 }
 
 module.exports = {
